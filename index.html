@@ -1,10 +1,520 @@
-<html>
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
 <head>
-    <title>TikTok Live Quiz</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TikTok Live Quiz Game</title>
+    <style>
+        :root {
+            --bg: #1a1a1a;
+            --fg: #ffffff;
+            --accent: #ff2d55;
+            --success: #34c759;
+            --warning: #ffcc00;
+            --error: #ff3b30;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background: var(--bg);
+            color: var(--fg);
+            line-height: 1.6;
+            padding: 1rem;
+            display: grid;
+            grid-template-columns: 1fr 300px;
+            grid-template-rows: auto 1fr;
+            gap: 1rem;
+            height: 100vh;
+        }
+
+        .header {
+            grid-column: 1 / -1;
+            padding: 1rem;
+            background: rgba(255,255,255,0.05);
+            border-radius: 8px;
+        }
+
+        .game-settings {
+            background: rgba(255,255,255,0.05);
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+        }
+
+        .settings-group {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .settings-group label {
+            flex: 1;
+        }
+
+        .connection-status {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+            background: var(--error);
+        }
+
+        .connection-status.connected {
+            background: var(--success);
+        }
+
+        .game-panel {
+            background: rgba(255,255,255,0.05);
+            padding: 1rem;
+            border-radius: 8px;
+        }
+
+        .timer {
+            font-size: 1.2em;
+            color: var(--warning);
+            margin: 0.5rem 0;
+        }
+
+        .question-counter {
+            font-size: 1.2em;
+            color: var(--accent);
+            margin-bottom: 1rem;
+        }
+
+        button {
+            background: var(--accent);
+            color: var(--fg);
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: opacity 0.2s;
+        }
+
+        button:hover {
+            opacity: 0.9;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        input, textarea {
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.2);
+            color: var(--fg);
+            padding: 0.5rem;
+            border-radius: 4px;
+            width: 100%;
+            margin-bottom: 1rem;
+        }
+
+        .winner-message {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: var(--accent);
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            animation: fadeInOut 3s forwards;
+            z-index: 1000;
+        }
+
+        @keyframes fadeInOut {
+            0% { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
+            10% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+            80% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+            100% { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
+        }
+
+        .sidebar {
+            background: rgba(255,255,255,0.05);
+            padding: 1rem;
+            border-radius: 8px;
+            overflow-y: auto;
+        }
+
+        .leaderboard-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.5rem;
+            background: rgba(255,255,255,0.05);
+            margin-bottom: 0.5rem;
+            border-radius: 4px;
+        }
+    </style>
 </head>
 <body>
-    <h1>Improved Question Controls</h1>
-    <p>Welcome to the TikTok Live Quiz!</p>
-    <p>تم إضافة دعم اللغة العربية.</p>
+    <header class="header">
+        <div class="game-settings">
+            <div class="settings-group">
+                <label>عدد الأسئلة الكلي:
+                    <input type="number" id="totalQuestionsInput" min="1" max="100" value="10">
+                </label>
+                <label>وقت الإجابة (بالثواني):
+                    <input type="number" id="answerTimeInput" min="5" max="300" value="30">
+                </label>
+            </div>
+            <button id="startGameBtn">بدء مسابقة جديدة</button>
+        </div>
+
+        <div class="connection-controls">
+            <span class="connection-status"></span>
+            <input type="text" id="username" placeholder="TikTok Username" value="al9saqr">
+            <button id="connectBtn">اتصال</button>
+            <button id="disconnectBtn" disabled>قطع الاتصال</button>
+            <button id="testModeBtn">وضع الاختبار</button>
+        </div>
+        <iframe id="tiktokChat" class="tiktok-iframe"></iframe>
+    </header>
+
+    <main class="game-panel">
+        <div class="question-controls">
+            <h2>السؤال الحالي</h2>
+            <div class="question-counter">
+                السؤال <span id="currentQuestionNumber">0</span> من <span id="totalQuestionsDisplay">10</span>
+            </div>
+            <div id="timer" class="timer"></div>
+            <textarea id="questionText" rows="3" placeholder="اكتب السؤال هنا"></textarea>
+            <input type="text" id="correctAnswer" placeholder="الإجابة الصحيحة">
+            <button id="sendQuestion">إرسال السؤال (Ctrl+Enter)</button>
+            <button id="endQuestion">إنهاء السؤال (Ctrl+E)</button>
+        </div>
+
+        <div class="current-game-status">
+            <div id="currentWinner"></div>
+        </div>
+    </main>
+
+    <aside class="sidebar">
+        <div class="leaderboard">
+            <h2>لوحة المتصدرين</h2>
+            <button id="resetScores">إعادة تصفير النقاط</button>
+            <button id="exportCSV">تصدير CSV</button>
+            <div id="leaderboardList"></div>
+        </div>
+
+        <div class="answer-log">
+            <h2>آخر الإجابات</h2>
+            <div id="answerLogList"></div>
+        </div>
+    </aside>
+
+    <script>
+        const GameEngine = {
+            gameConfig: {
+                totalQuestions: 10,
+                currentQuestionNumber: 0,
+                answerTime: 30,
+                timer: null
+            },
+            connected: false,
+            currentQuestion: null,
+            scores: new Map(),
+            answerLog: [],
+            testMode: false,
+            testInterval: null,
+
+            init() {
+                this.loadFromLocalStorage();
+                this.setupEventListeners();
+                this.setupMessageListener();
+                this.loadGameSettings();
+                this.updateUI();
+            },
+
+            loadGameSettings() {
+                const savedSettings = localStorage.getItem('quizSettings');
+                if (savedSettings) {
+                    const settings = JSON.parse(savedSettings);
+                    this.gameConfig = { ...this.gameConfig, ...settings };
+                }
+                this.updateSettingsDisplay();
+            },
+
+            updateSettingsDisplay() {
+                document.getElementById('totalQuestionsInput').value = this.gameConfig.totalQuestions;
+                document.getElementById('answerTimeInput').value = this.gameConfig.answerTime;
+                document.getElementById('currentQuestionNumber').textContent = this.gameConfig.currentQuestionNumber;
+                document.getElementById('totalQuestionsDisplay').textContent = this.gameConfig.totalQuestions;
+            },
+
+            startNewGame() {
+                this.gameConfig.totalQuestions = parseInt(document.getElementById('totalQuestionsInput').value);
+                this.gameConfig.answerTime = parseInt(document.getElementById('answerTimeInput').value);
+                this.gameConfig.currentQuestionNumber = 0;
+                this.scores.clear();
+                this.updateSettingsDisplay();
+                this.saveGameSettings();
+                this.updateUI();
+            },
+
+            setupMessageListener() {
+                window.addEventListener('message', (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        if (data.type === 'chat') {
+                            const username = data.nickname;
+                            const message = data.comment;
+                            if (this.currentQuestion && !this.currentQuestion.winner) {
+                                console.log(`تم استلام إجابة من ${username}: ${message}`);
+                                this.handleAnswer(username, message);
+                            }
+                        }
+                    } catch (e) {
+                        console.log('رسالة غير صالحة:', e);
+                    }
+                });
+            },
+
+            connect(username) {
+                const url = `https://tiktok-chat-reader.zerody.one/obs.html?username=${username}&showLikes=1&showChats=1&showGifts=1&showFollows=1&showJoins=1&bgColor=rgb(24,23,28)&fontColor=rgb(255,255,255)`;
+                document.getElementById('tiktokChat').src = url;
+                this.connected = true;
+                this.updateUI();
+                this.saveToLocalStorage();
+            },
+
+            disconnect() {
+                document.getElementById('tiktokChat').src = '';
+                this.connected = false;
+                this.updateUI();
+            },
+
+            startAnswerTimer() {
+                const timerElement = document.getElementById('timer');
+                let timeLeft = this.gameConfig.answerTime;
+                
+                clearInterval(this.gameConfig.timer);
+                
+                this.gameConfig.timer = setInterval(() => {
+                    timerElement.textContent = `الوقت المتبقي: ${timeLeft} ثانية`;
+                    
+                    if (timeLeft <= 0 || (this.currentQuestion && this.currentQuestion.winner)) {
+                        clearInterval(this.gameConfig.timer);
+                        if (!this.currentQuestion.winner) {
+                            timerElement.textContent = 'انتهى الوقت!';
+                            this.endQuestion();
+                        }
+                    }
+                    
+                    timeLeft--;
+                }, 1000);
+            },
+
+            sendQuestion(question, answer) {
+                if (!question || !answer || answer.length < 2) return false;
+                
+                this.currentQuestion = {
+                    text: question,
+                    answer: this.normalizeText(answer),
+                    winner: null,
+                    timestamp: Date.now()
+                };
+                
+                this.gameConfig.currentQuestionNumber++;
+                this.startAnswerTimer();
+                this.updateUI();
+                return true;
+            },
+
+            endQuestion() {
+                if (!this.currentQuestion) return;
+                clearInterval(this.gameConfig.timer);
+                document.getElementById('timer').textContent = '';
+                this.currentQuestion = null;
+                this.updateUI();
+            },
+
+            handleAnswer(username, answer) {
+                if (!this.currentQuestion || this.currentQuestion.winner) return;
+
+                const normalizedAnswer = this.normalizeText(answer);
+                if (normalizedAnswer === this.currentQuestion.answer) {
+                    console.log(`إجابة صحيحة من ${username}!`);
+                    this.currentQuestion.winner = username;
+                    this.addScore(username);
+                    
+                    const winnerMessage = document.createElement('div');
+                    winnerMessage.className = 'winner-message';
+                    winnerMessage.innerHTML = `
+                        <h2>🎉 تهانينا! 🎉</h2>
+                        <p>الفائز: ${username}</p>
+                        <p>الإجابة الصحيحة: ${answer}</p>
+                    `;
+                    document.body.appendChild(winnerMessage);
+                    setTimeout(() => winnerMessage.remove(), 3000);
+                    
+                    clearInterval(this.gameConfig.timer);
+                }
+
+                this.addToAnswerLog(username, answer);
+                this.updateUI();
+            },
+
+            normalizeText(text) {
+                return text
+                    .toLowerCase()
+                    .replace(/[٠-٩]/g, d => String.fromCharCode(d.charCodeAt(0) - 1632 + 48))
+                    .replace(/[۰-۹]/g, d => String.fromCharCode(d.charCodeAt(0) - 1776 + 48))
+                    .replace(/[^
+\w\s]/g, '')
+                    .replace(/\s+/g, '')
+                    .trim();
+            },
+
+            addScore(username) {
+                const currentScore = this.scores.get(username) || 0;
+                this.scores.set(username, currentScore + 1);
+                this.saveToLocalStorage();
+            },
+
+            resetScores() {
+                if (!confirm('هل أنت متأكد من إعادة تصفير النقاط؟')) return;
+                this.scores.clear();
+                this.saveToLocalStorage();
+                this.updateUI();
+            },
+
+            addToAnswerLog(username, answer) {
+                this.answerLog.unshift({ username, answer, timestamp: Date.now() });
+                this.answerLog = this.answerLog.slice(0, 5);
+                this.updateUI();
+            },
+
+            exportCSV() {
+                const csv = [
+                    'Username,Score,LastWin',
+                    ...Array.from(this.scores.entries()).map(([user, score]) => 
+                        `"${user}",${score},${new Date().toISOString()}`
+                    )
+                ].join('\n');
+
+                const blob = new Blob([csv], { type: 'text/csv' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'leaderboard.csv';
+                a.click();
+                URL.revokeObjectURL(url);
+            },
+
+            toggleTestMode() {
+                this.testMode = !this.testMode;
+                if (this.testMode) {
+                    this.testInterval = setInterval(() => {
+                        const testUsers = ['user1', 'user2', 'user3', 'user4'];
+                        const testAnswers = ['test1', 'test2', this.currentQuestion?.answer || 'correct'];
+                        const randomUser = testUsers[Math.floor(Math.random() * testUsers.length)];
+                        const randomAnswer = testAnswers[Math.floor(Math.random() * testAnswers.length)];
+                        this.handleAnswer(randomUser, randomAnswer);
+                    }, 2000);
+                } else {
+                    clearInterval(this.testInterval);
+                }
+                document.getElementById('testModeBtn').textContent = 
+                    this.testMode ? 'إيقاف وضع الاختبار' : 'وضع الاختبار';
+            },
+
+            saveToLocalStorage() {
+                const data = {
+                    scores: Array.from(this.scores.entries()),
+                    username: document.getElementById('username').value,
+                    gameConfig: this.gameConfig
+                };
+                localStorage.setItem('tikTokQuizGame', JSON.stringify(data));
+            },
+
+            loadFromLocalStorage() {
+                try {
+                    const data = JSON.parse(localStorage.getItem('tikTokQuizGame'));
+                    if (data) {
+                        this.scores = new Map(data.scores);
+                        document.getElementById('username').value = data.username || 'al9saqr';
+                        if (data.gameConfig) {
+                            this.gameConfig = { ...this.gameConfig, ...data.gameConfig };
+                        }
+                    }
+                } catch (e) {
+                    console.error('Error loading from localStorage:', e);
+                }
+            },
+
+            updateUI() {
+                document.querySelector('.connection-status').classList.toggle('connected', this.connected);
+                document.getElementById('connectBtn').disabled = this.connected;
+                document.getElementById('disconnectBtn').disabled = !this.connected;
+
+                const currentWinner = document.getElementById('currentWinner');
+                if (this.currentQuestion) {
+                    currentWinner.textContent = this.currentQuestion.winner ? 
+                        `الفائز: ${this.currentQuestion.winner}` : 'لم يتم تحديد فائز بعد';
+                } else {
+                    currentWinner.textContent = '';
+                }
+
+                const leaderboardList = document.getElementById('leaderboardList');
+                leaderboardList.innerHTML = Array.from(this.scores.entries())
+                    .sort(([,a], [,b]) => b - a)
+                    .map(([user, score]) => `
+                        <div class="leaderboard-item">
+                            <span>${user}</span>
+                            <span>${score} نقطة</span>
+                        </div>
+                    `).join('');
+
+                const answerLogList = document.getElementById('answerLogList');
+                answerLogList.innerHTML = this.answerLog.map(({username, answer}) => `
+                    <div class="answer-log-item">
+                        <strong>${username}:</strong> ${answer}
+                    </div>
+                `).join('');
+
+                document.getElementById('currentQuestionNumber').textContent = this.gameConfig.currentQuestionNumber;
+            },
+
+            setupEventListeners() {
+                document.getElementById('connectBtn').onclick = () => {
+                    const username = document.getElementById('username').value;
+                    this.connect(username);
+                };
+
+                document.getElementById('disconnectBtn').onclick = () => this.disconnect();
+                document.getElementById('testModeBtn').onclick = () => this.toggleTestMode();
+                document.getElementById('resetScores').onclick = () => this.resetScores();
+                document.getElementById('exportCSV').onclick = () => this.exportCSV();
+                document.getElementById('startGameBtn').onclick = () => this.startNewGame();
+
+                document.getElementById('sendQuestion').onclick = () => {
+                    const question = document.getElementById('questionText').value;
+                    const answer = document.getElementById('correctAnswer').value;
+                    this.sendQuestion(question, answer);
+                };
+
+                document.getElementById('endQuestion').onclick = () => this.endQuestion();
+
+                document.addEventListener('keydown', (e) => {
+                    if (e.ctrlKey && e.key === 'Enter') {
+                        document.getElementById('sendQuestion').click();
+                    } else if (e.ctrlKey && e.key === 'e') {
+                        document.getElementById('endQuestion').click();
+                    }
+                });
+            }
+        };
+
+        document.addEventListener('DOMContentLoaded', () => GameEngine.init());
+    </script>
 </body>
 </html>
